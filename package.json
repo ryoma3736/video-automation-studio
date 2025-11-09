@@ -1,0 +1,51 @@
+{
+  "name": "video-automation-studio",
+  "version": "1.0.0",
+  "description": "AI-driven video automation platform for script-to-video generation",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/cli/index.ts",
+    "start": "node dist/cli/index.js",
+    "server": "tsx src/api/server.ts",
+    "cli": "tsx src/cli/index.ts",
+    "test": "vitest",
+    "lint": "eslint src --ext .ts",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "video-automation",
+    "ai",
+    "llm",
+    "remotion",
+    "slides",
+    "script-processing"
+  ],
+  "author": "",
+  "license": "MIT",
+  "bin": {
+    "studio": "./dist/cli/index.js"
+  },
+  "dependencies": {
+    "commander": "^11.1.0",
+    "express": "^4.18.2",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.0",
+    "@types/uuid": "^9.0.7",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "eslint": "^8.54.0",
+    "prettier": "^3.1.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.0.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

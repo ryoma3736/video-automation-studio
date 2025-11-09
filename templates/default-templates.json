@@ -1,0 +1,79 @@
+{
+  "$schema": "../config/template-schema.json",
+  "version": "1.0.0",
+  "templates": [
+    {
+      "id": "bullet-hero",
+      "desc": "大見出し＋最大3行の要点。大フォント。",
+      "vars": ["title", "bullets"],
+      "constraints": {
+        "bullets_max": 3,
+        "chars_per_line_max": 18,
+        "lines_max": 3
+      }
+    },
+    {
+      "id": "quote+visual",
+      "desc": "印象的な一言＋背景イメージ",
+      "vars": ["quote", "source", "image_ref"],
+      "constraints": {
+        "chars_per_line_max": 20,
+        "lines_max": 2
+      }
+    },
+    {
+      "id": "diagram",
+      "desc": "関係/流れの可視化（Mermaidや簡易DSL）",
+      "vars": ["caption", "graph_spec"],
+      "constraints": {
+        "chars_per_line_max": 22,
+        "lines_max": 3
+      }
+    },
+    {
+      "id": "title-slide",
+      "desc": "タイトルスライド。動画の冒頭に使用。",
+      "vars": ["title", "subtitle"],
+      "constraints": {
+        "chars_per_line_max": 20,
+        "lines_max": 2
+      }
+    },
+    {
+      "id": "section-header",
+      "desc": "セクションの見出しスライド",
+      "vars": ["section_title", "section_number"],
+      "constraints": {
+        "chars_per_line_max": 18,
+        "lines_max": 1
+      }
+    },
+    {
+      "id": "two-column",
+      "desc": "左右2カラムレイアウト",
+      "vars": ["left_content", "right_content", "title"],
+      "constraints": {
+        "chars_per_line_max": 16,
+        "lines_max": 4
+      }
+    },
+    {
+      "id": "fullscreen-image",
+      "desc": "全画面イメージ＋キャプション",
+      "vars": ["image_ref", "caption"],
+      "constraints": {
+        "chars_per_line_max": 24,
+        "lines_max": 2
+      }
+    },
+    {
+      "id": "code-snippet",
+      "desc": "コードスニペット表示",
+      "vars": ["code", "language", "caption"],
+      "constraints": {
+        "chars_per_line_max": 80,
+        "lines_max": 15
+      }
+    }
+  ]
+}
