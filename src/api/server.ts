@@ -4,29 +4,23 @@
  */
 
 import express, { Request, Response } from "express";
-import {
-  createScript,
-  normalizeScript,
-  segmentScript,
-} from "../services/scriptService";
-import { loadTemplates, planSlides } from "../services/slideService";
-import { Script, Section } from "../types";
+import { getDefaultScriptService } from "../services/scriptService";
+import { loadTemplates, getDefaultSlideService } from "../services/slideService";
+import { getDefaultStorage } from "../services/storageService";
+import { logger } from "../utils/logger";
 
 const app = express();
 app.use(express.json());
 
-// In-memory storage (replace with actual database in production)
-const scriptsStore = new Map<string, Script>();
-const sectionsStore = new Map<string, Section[]>();
+// Initialize services
+const storage = getDefaultStorage();
+const scriptService = getDefaultScriptService();
+const slideService = getDefaultSlideService();
 
-/**
- * LLM Client adapter
- * Replace with actual LLM client (OpenAI, Anthropic, etc.)
- */
-async function llmClient(prompt: string): Promise<string> {
-  // TODO: Implement actual LLM client
-  throw new Error("LLM client not configured");
-}
+// Initialize storage on startup
+storage.initialize().catch((err) => {
+  logger.error("Failed to initialize storage", { error: err });
+});
 
 /**
  * POST /script/ingest
@@ -42,10 +36,11 @@ app.post("/script/ingest", async (req: Request, res: Response) => {
       });
     }
 
-    const script = createScript(title, markdown, { author, tags });
-    scriptsStore.set(script.id, script);
+    await storage.initialize();
+    const script = scriptService.createScript(title, markdown, { author, tags });
+    await scriptService.saveScript(script);
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       script: {
         id: script.id,
@@ -54,7 +49,8 @@ app.post("/script/ingest", async (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    res.status(500).json({
+    logger.error("Failed to ingest script", { error: error.message });
+    return res.status(500).json({
       error: "Failed to ingest script",
       message: error.message,
     });
@@ -75,23 +71,24 @@ app.post("/script/normalize", async (req: Request, res: Response) => {
       });
     }
 
-    const script = scriptsStore.get(scriptId);
+    await storage.initialize();
+    const script = await scriptService.loadScript(scriptId);
     if (!script) {
       return res.status(404).json({
         error: "Script not found",
       });
     }
 
-    const normalizedScript = await normalizeScript(script, llmClient);
-    scriptsStore.set(scriptId, normalizedScript);
+    const normalizedScript = await scriptService.normalizeScript(script);
 
-    res.json({
+    return res.json({
       success: true,
       scriptId,
       normalized_markdown: normalizedScript.normalized_markdown,
     });
   } catch (error: any) {
-    res.status(500).json({
+    logger.error("Failed to normalize script", { error: error.message });
+    return res.status(500).json({
       error: "Failed to normalize script",
       message: error.message,
     });
@@ -112,7 +109,8 @@ app.post("/script/segment", async (req: Request, res: Response) => {
       });
     }
 
-    const script = scriptsStore.get(scriptId);
+    await storage.initialize();
+    const script = await scriptService.loadScript(scriptId);
     if (!script) {
       return res.status(404).json({
         error: "Script not found",
@@ -125,16 +123,16 @@ app.post("/script/segment", async (req: Request, res: Response) => {
       });
     }
 
-    const sections = await segmentScript(script, llmClient);
-    sectionsStore.set(scriptId, sections);
+    const sections = await scriptService.segmentScript(script);
 
-    res.json({
+    return res.json({
       success: true,
       scriptId,
       sections,
     });
   } catch (error: any) {
-    res.status(500).json({
+    logger.error("Failed to segment script", { error: error.message });
+    return res.status(500).json({
       error: "Failed to segment script",
       message: error.message,
     });
@@ -155,7 +153,8 @@ app.post("/slides/plan", async (req: Request, res: Response) => {
       });
     }
 
-    const sections = sectionsStore.get(scriptId);
+    await storage.initialize();
+    const sections = await scriptService.loadSections(scriptId);
     if (!sections) {
       return res.status(404).json({
         error: "Sections not found for script",
@@ -163,15 +162,16 @@ app.post("/slides/plan", async (req: Request, res: Response) => {
     }
 
     const templates = await loadTemplates(templatePath);
-    const slideSpecs = await planSlides(sections, templates, llmClient);
+    const slideSpecs = await slideService.planSlides(scriptId, sections, templates);
 
-    res.json({
+    return res.json({
       success: true,
       scriptId,
       specs: slideSpecs,
     });
   } catch (error: any) {
-    res.status(500).json({
+    logger.error("Failed to plan slides", { error: error.message });
+    return res.status(500).json({
       error: "Failed to plan slides",
       message: error.message,
     });
@@ -182,36 +182,54 @@ app.post("/slides/plan", async (req: Request, res: Response) => {
  * GET /script/:id
  * Get script by ID
  */
-app.get("/script/:id", (req: Request, res: Response) => {
-  const script = scriptsStore.get(req.params.id);
-  if (!script) {
-    return res.status(404).json({
-      error: "Script not found",
+app.get("/script/:id", async (req: Request, res: Response) => {
+  try {
+    await storage.initialize();
+    const script = await scriptService.loadScript(req.params.id);
+    if (!script) {
+      return res.status(404).json({
+        error: "Script not found",
+      });
+    }
+
+    return res.json({
+      success: true,
+      script,
+    });
+  } catch (error: any) {
+    logger.error("Failed to get script", { error: error.message });
+    return res.status(500).json({
+      error: "Failed to get script",
+      message: error.message,
     });
   }
-
-  res.json({
-    success: true,
-    script,
-  });
 });
 
 /**
  * GET /sections/:scriptId
  * Get sections for a script
  */
-app.get("/sections/:scriptId", (req: Request, res: Response) => {
-  const sections = sectionsStore.get(req.params.scriptId);
-  if (!sections) {
-    return res.status(404).json({
-      error: "Sections not found",
+app.get("/sections/:scriptId", async (req: Request, res: Response) => {
+  try {
+    await storage.initialize();
+    const sections = await scriptService.loadSections(req.params.scriptId);
+    if (!sections) {
+      return res.status(404).json({
+        error: "Sections not found",
+      });
+    }
+
+    return res.json({
+      success: true,
+      sections,
+    });
+  } catch (error: any) {
+    logger.error("Failed to get sections", { error: error.message });
+    return res.status(500).json({
+      error: "Failed to get sections",
+      message: error.message,
     });
   }
-
-  res.json({
-    success: true,
-    sections,
-  });
 });
 
 /**

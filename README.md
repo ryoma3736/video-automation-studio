@@ -46,23 +46,40 @@ npm run build
 
 ## 設定
 
-`.env.example`を`.env`にコピーして、LLM APIキーを設定：
+### 環境変数の設定
 
-```bash
-cp .env.example .env
-```
-
-`.env`ファイルを編集して、以下を設定：
+プロジェクトルートに`.env`ファイルを作成し、以下の環境変数を設定してください：
 
 ```env
-# OpenAI使用時
+# LLM設定（OpenAIまたはAnthropicのいずれか）
 OPENAI_API_KEY=your_openai_api_key_here
-OPENAI_MODEL=gpt-4
+OPENAI_MODEL=gpt-4-turbo-preview
 
-# Anthropic Claude使用時
+# または
+
 ANTHROPIC_API_KEY=your_anthropic_api_key_here
 ANTHROPIC_MODEL=claude-3-sonnet-20240229
+
+# TTS設定（ElevenLabsまたはOpenAI TTS）
+ELEVENLABS_API_KEY=your_elevenlabs_api_key_here
+ELEVENLABS_VOICE_ID=21m00Tcm4TlvDq8ikWAM
+
+# ストレージ設定（オプション）
+STORAGE_BASE_DIR=./data
+
+# ログレベル（オプション）
+LOG_LEVEL=INFO
 ```
+
+### ストレージの初期化
+
+初回実行時にストレージディレクトリが自動作成されます。手動で初期化する場合は：
+
+```bash
+npm run cli -- info
+```
+
+これにより、必要なディレクトリが作成されます。
 
 ## 使い方
 
@@ -71,23 +88,43 @@ ANTHROPIC_MODEL=claude-3-sonnet-20240229
 #### 1. 台本の取り込み
 
 ```bash
-npm run cli -- studio:ingest ./example-script.md --title "サンプル動画" --author "Your Name"
+npm run cli -- studio:ingest ./examples/sample-script.md --title "サンプル動画" --author "Your Name"
 ```
+
+実行後、スクリプトIDが表示されます。このIDを以降のコマンドで使用します。
 
 #### 2. 台本の整形
 
+ストレージを使用する場合（推奨）：
+```bash
+npm run cli -- studio:normalize dummy --script-id <script-id>
+```
+
+ファイルを使用する場合：
 ```bash
 npm run cli -- studio:normalize ./data/scripts/<script-id>.json
 ```
 
 #### 3. セクション分割
 
+ストレージを使用する場合（推奨）：
+```bash
+npm run cli -- studio:segment dummy --script-id <script-id>
+```
+
+ファイルを使用する場合：
 ```bash
 npm run cli -- studio:segment ./data/scripts/<script-id>.json
 ```
 
 #### 4. スライド設計
 
+ストレージを使用する場合（推奨）：
+```bash
+npm run cli -- slides:plan dummy --script-id <script-id>
+```
+
+ファイルを使用する場合：
 ```bash
 npm run cli -- slides:plan ./data/sections/<script-id>.json
 ```
@@ -95,7 +132,7 @@ npm run cli -- slides:plan ./data/sections/<script-id>.json
 #### 5. スライドのレンダリング（Marp Markdown生成）
 
 ```bash
-npm run cli -- slides:render ./data/slides/specs.json -o ./output/slides.md
+npm run cli -- slides:render ./data/slides/<script-id>.json -o ./output/slides.md
 ```
 
 #### 6. Marp CLIでPDF/PNG変換
@@ -160,20 +197,26 @@ video-automation-studio/
 ├── src/
 │   ├── types/           # TypeScript型定義
 │   ├── services/        # ビジネスロジック
-│   │   ├── scriptService.ts
-│   │   └── slideService.ts
+│   │   ├── scriptService.ts    # 台本処理サービス
+│   │   ├── slideService.ts     # スライド生成サービス
+│   │   ├── llmService.ts       # LLMクライアントサービス
+│   │   ├── storageService.ts   # ストレージサービス
+│   │   ├── audioService.ts     # 音声生成サービス
+│   │   ├── remotionService.ts  # Remotionコード生成サービス
+│   │   └── renderJobService.ts # レンダリングジョブ管理
 │   ├── prompts/         # LLMプロンプト管理
 │   ├── validators/      # バリデーション機能
 │   ├── api/            # Express APIサーバー
 │   ├── cli/            # CLIツール
 │   └── utils/          # ユーティリティ
 ├── templates/          # スライドテンプレート定義
-├── config/            # 設定ファイル
-├── data/              # データストレージ（ローカル）
-│   ├── scripts/
-│   ├── sections/
-│   └── slides/
-├── output/            # 生成ファイル出力先
+├── data/              # データストレージ（自動生成）
+│   ├── scripts/       # 台本データ
+│   ├── sections/      # セクションデータ
+│   ├── slides/        # スライド仕様
+│   ├── render-jobs/   # レンダリングジョブ
+│   └── output/        # 出力ファイル
+├── examples/          # サンプルファイル
 └── package.json
 ```
 
@@ -250,6 +293,29 @@ npm test
 - **Commander**: CLIフレームワーク
 - **Marp**: スライド生成
 - **LLM**: OpenAI GPT-4 / Anthropic Claude
+- **TTS**: ElevenLabs / OpenAI TTS
+- **Remotion**: 動画合成（予定）
+
+## 実装済み機能
+
+### ✅ コア機能
+- ✅ 台本の取り込みとストレージ管理
+- ✅ LLMによる台本の整形（正規化）
+- ✅ LLMによるセクション分割
+- ✅ LLMによるスライド設計
+- ✅ ストレージサービス（ファイルシステムベース）
+- ✅ LLMクライアント（OpenAI/Anthropic対応）
+- ✅ 音声生成サービス（ElevenLabs/OpenAI TTS対応）
+- ✅ Remotionコード生成サービス
+- ✅ レンダリングジョブ管理サービス
+- ✅ バリデーション機能
+- ✅ ログ機能
+
+### 🚧 実装予定
+- ⏳ スライドレンダリング（Marp PNG/PDF出力）
+- ⏳ Remotionプロジェクトの自動生成とレンダリング
+- ⏳ 音声と動画の統合
+- ⏳ Instagram投稿機能
 
 ## ライセンス
 

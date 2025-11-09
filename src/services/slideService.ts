@@ -6,6 +6,9 @@
 import { Section, SlideSpec, TemplateDef, SlideUnit } from "../types";
 import { buildLLMRequest, parseLLMResponse } from "../prompts";
 import { validateSlideSpec } from "../validators";
+import { LLMClient, getDefaultLLMClient } from "./llmService";
+import { StorageService, getDefaultStorage } from "./storageService";
+import { logger } from "../utils/logger";
 import * as fs from "fs/promises";
 import * as path from "path";
 
@@ -31,32 +34,91 @@ export async function loadTemplates(
 }
 
 /**
- * Generate slide specifications from sections using LLM
+ * Slide Service Class
+ */
+export class SlideService {
+  private llmClient: LLMClient;
+  private storage: StorageService;
+
+  constructor(llmClient?: LLMClient, storage?: StorageService) {
+    this.llmClient = llmClient || getDefaultLLMClient();
+    this.storage = storage || getDefaultStorage();
+  }
+
+  /**
+   * Generate slide specifications from sections using LLM
+   */
+  async planSlides(
+    scriptId: string,
+    sections: Section[],
+    templates: TemplateDef[]
+  ): Promise<SlideSpec[]> {
+    logger.info("Planning slides", { scriptId, sectionCount: sections.length });
+
+    const prompt = buildLLMRequest({
+      task: "slidespec",
+      sections_json: { sections },
+      templates_json: { templates },
+    });
+
+    const response = await this.llmClient.complete(prompt);
+    const result = parseLLMResponse("slidespec", response);
+
+    // Validate the generated specs
+    const allSlides = result.specs.flatMap((spec: SlideSpec) => spec.slides);
+    const validation = validateSlideSpec(allSlides, templates);
+
+    if (!validation.valid) {
+      logger.warn("Slide validation errors", { errors: validation.errors });
+      logger.warn("Slide validation warnings", { warnings: validation.warnings });
+    }
+
+    await this.storage.saveSlideSpecs(scriptId, result.specs);
+    logger.info("Slides planned", { scriptId, specCount: result.specs.length });
+
+    return result.specs;
+  }
+
+  /**
+   * Load slide specs for a script
+   */
+  async loadSlideSpecs(scriptId: string): Promise<SlideSpec[] | null> {
+    return await this.storage.loadSlideSpecs(scriptId);
+  }
+}
+
+/**
+ * Default slide service instance
+ */
+let defaultSlideService: SlideService | null = null;
+
+export function getDefaultSlideService(): SlideService {
+  if (!defaultSlideService) {
+    defaultSlideService = new SlideService();
+  }
+  return defaultSlideService;
+}
+
+/**
+ * Reset default slide service (useful for testing)
+ */
+export function resetDefaultSlideService(): void {
+  defaultSlideService = null;
+}
+
+/**
+ * Legacy function exports (for backward compatibility)
  */
 export async function planSlides(
   sections: Section[],
   templates: TemplateDef[],
-  llmClient: (prompt: string) => Promise<string>
+  _llmClient?: (prompt: string) => Promise<string>
 ): Promise<SlideSpec[]> {
-  const prompt = buildLLMRequest({
-    task: "slidespec",
-    sections_json: { sections },
-    templates_json: { templates },
-  });
-
-  const response = await llmClient(prompt);
-  const result = parseLLMResponse("slidespec", response);
-
-  // Validate the generated specs
-  const allSlides = result.specs.flatMap((spec: SlideSpec) => spec.slides);
-  const validation = validateSlideSpec(allSlides, templates);
-
-  if (!validation.valid) {
-    console.warn("Slide validation errors:", validation.errors);
-    console.warn("Slide validation warnings:", validation.warnings);
-  }
-
-  return result.specs;
+  // This function requires scriptId, but we'll use a temporary approach
+  // In practice, this should be called with a scriptId
+  const service = getDefaultSlideService();
+  const scriptId = sections[0]?.scriptId || "temp";
+  return await service.planSlides(scriptId, sections, templates);
 }
 
 /**
@@ -64,9 +126,9 @@ export async function planSlides(
  * This would typically use Marp, reveal.js, or similar
  */
 export async function renderSlides(
-  specs: SlideSpec[],
-  templates: TemplateDef[],
-  outputDir: string
+  _specs: SlideSpec[],
+  _templates: TemplateDef[],
+  _outputDir: string
 ): Promise<Map<string, string>> {
   // TODO: Implement actual slide rendering
   // This should:

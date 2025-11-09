@@ -7,20 +7,19 @@
 import { Command } from "commander";
 import * as fs from "fs/promises";
 import * as path from "path";
-import { createScript, normalizeScript, segmentScript } from "../services/scriptService";
-import { loadTemplates, planSlides, generateMarpMarkdown, saveSlideSpecs } from "../services/slideService";
+import { getDefaultScriptService } from "../services/scriptService";
+import { loadTemplates, getDefaultSlideService, generateMarpMarkdown } from "../services/slideService";
+import { getDefaultStorage } from "../services/storageService";
 import { startServer } from "../api/server";
+import { logger } from "../utils/logger";
 
 const program = new Command();
 
-/**
- * LLM Client placeholder
- * TODO: Replace with actual LLM client implementation
- */
-async function llmClient(prompt: string): Promise<string> {
-  console.warn("⚠️  LLM client not configured. Please implement llmClient function.");
-  throw new Error("LLM client not implemented");
-}
+// Initialize storage
+const storage = getDefaultStorage();
+storage.initialize().catch((err) => {
+  logger.error("Failed to initialize storage", { error: err });
+});
 
 /**
  * studio:ingest - Ingest a new script from markdown file
@@ -34,23 +33,22 @@ program
   .option("-o, --output <path>", "Output path for script JSON", "./data/scripts")
   .action(async (file: string, options: any) => {
     try {
+      await storage.initialize();
+      const scriptService = getDefaultScriptService();
+      
       const markdown = await fs.readFile(file, "utf-8");
       const title = options.title || path.basename(file, ".md");
 
-      const script = createScript(title, markdown, {
+      const script = scriptService.createScript(title, markdown, {
         author: options.author,
       });
 
-      const outputDir = options.output;
-      await fs.mkdir(outputDir, { recursive: true });
-
-      const outputPath = path.join(outputDir, `${script.id}.json`);
-      await fs.writeFile(outputPath, JSON.stringify(script, null, 2));
+      await scriptService.saveScript(script);
 
       console.log(`✅ Script ingested successfully`);
       console.log(`   ID: ${script.id}`);
       console.log(`   Title: ${script.title}`);
-      console.log(`   Output: ${outputPath}`);
+      console.log(`   Saved to storage`);
     } catch (error: any) {
       console.error(`❌ Error: ${error.message}`);
       process.exit(1);
@@ -65,19 +63,34 @@ program
   .description("Normalize a script using LLM")
   .argument("<scriptFile>", "Path to script JSON file")
   .option("-o, --output <path>", "Output path for normalized script")
+  .option("-i, --script-id <id>", "Script ID (if using storage)")
   .action(async (scriptFile: string, options: any) => {
     try {
-      const content = await fs.readFile(scriptFile, "utf-8");
-      const script = JSON.parse(content);
+      await storage.initialize();
+      const scriptService = getDefaultScriptService();
+
+      let script;
+      if (options.scriptId) {
+        script = await scriptService.loadScript(options.scriptId);
+        if (!script) {
+          throw new Error(`Script not found: ${options.scriptId}`);
+        }
+      } else {
+        const content = await fs.readFile(scriptFile, "utf-8");
+        script = JSON.parse(content);
+      }
 
       console.log("🤖 Normalizing script with LLM...");
-      const normalized = await normalizeScript(script, llmClient);
+      const normalized = await scriptService.normalizeScript(script);
 
-      const outputPath = options.output || scriptFile;
-      await fs.writeFile(outputPath, JSON.stringify(normalized, null, 2));
-
-      console.log(`✅ Script normalized successfully`);
-      console.log(`   Output: ${outputPath}`);
+      if (!options.scriptId && options.output) {
+        await fs.writeFile(options.output, JSON.stringify(normalized, null, 2));
+        console.log(`✅ Script normalized successfully`);
+        console.log(`   Output: ${options.output}`);
+      } else {
+        console.log(`✅ Script normalized successfully`);
+        console.log(`   Script ID: ${normalized.id}`);
+      }
     } catch (error: any) {
       console.error(`❌ Error: ${error.message}`);
       process.exit(1);
@@ -92,25 +105,33 @@ program
   .description("Segment a normalized script into sections")
   .argument("<scriptFile>", "Path to script JSON file")
   .option("-o, --output <path>", "Output path for sections JSON")
+  .option("-i, --script-id <id>", "Script ID (if using storage)")
   .action(async (scriptFile: string, options: any) => {
     try {
-      const content = await fs.readFile(scriptFile, "utf-8");
-      const script = JSON.parse(content);
+      await storage.initialize();
+      const scriptService = getDefaultScriptService();
+
+      let script;
+      if (options.scriptId) {
+        script = await scriptService.loadScript(options.scriptId);
+        if (!script) {
+          throw new Error(`Script not found: ${options.scriptId}`);
+        }
+      } else {
+        const content = await fs.readFile(scriptFile, "utf-8");
+        script = JSON.parse(content);
+      }
 
       if (!script.normalized_markdown) {
         throw new Error("Script must be normalized before segmentation");
       }
 
       console.log("🤖 Segmenting script with LLM...");
-      const sections = await segmentScript(script, llmClient);
-
-      const outputPath = options.output || `./data/sections/${script.id}.json`;
-      await fs.mkdir(path.dirname(outputPath), { recursive: true });
-      await fs.writeFile(outputPath, JSON.stringify({ sections }, null, 2));
+      const sections = await scriptService.segmentScript(script);
 
       console.log(`✅ Script segmented successfully`);
       console.log(`   Sections: ${sections.length}`);
-      console.log(`   Output: ${outputPath}`);
+      console.log(`   Script ID: ${script.id}`);
     } catch (error: any) {
       console.error(`❌ Error: ${error.message}`);
       process.exit(1);
@@ -126,23 +147,36 @@ program
   .argument("<sectionsFile>", "Path to sections JSON file")
   .option("-t, --templates <path>", "Path to templates JSON")
   .option("-o, --output <path>", "Output path for slide specs JSON")
+  .option("-i, --script-id <id>", "Script ID")
   .action(async (sectionsFile: string, options: any) => {
     try {
-      const content = await fs.readFile(sectionsFile, "utf-8");
-      const { sections } = JSON.parse(content);
+      await storage.initialize();
+      const slideService = getDefaultSlideService();
+      const scriptService = getDefaultScriptService();
+
+      let sections;
+      let scriptId = options.scriptId;
+
+      if (scriptId) {
+        sections = await scriptService.loadSections(scriptId);
+        if (!sections) {
+          throw new Error(`Sections not found for script: ${scriptId}`);
+        }
+      } else {
+        const content = await fs.readFile(sectionsFile, "utf-8");
+        const data = JSON.parse(content);
+        sections = data.sections;
+        scriptId = sections[0]?.scriptId || "temp";
+      }
 
       const templates = await loadTemplates(options.templates);
 
       console.log("🤖 Planning slides with LLM...");
-      const slideSpecs = await planSlides(sections, templates, llmClient);
-
-      const outputPath = options.output || "./data/slides/specs.json";
-      await fs.mkdir(path.dirname(outputPath), { recursive: true });
-      await saveSlideSpecs(slideSpecs, outputPath);
+      const slideSpecs = await slideService.planSlides(scriptId, sections, templates);
 
       console.log(`✅ Slides planned successfully`);
       console.log(`   Specs: ${slideSpecs.length}`);
-      console.log(`   Output: ${outputPath}`);
+      console.log(`   Script ID: ${scriptId}`);
     } catch (error: any) {
       console.error(`❌ Error: ${error.message}`);
       process.exit(1);
