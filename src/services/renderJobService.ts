@@ -7,6 +7,11 @@ import { RenderJob } from "../types";
 import { StorageService, getDefaultStorage } from "./storageService";
 import { logger } from "../utils/logger";
 import { v4 as uuidv4 } from "uuid";
+import { exec } from "child_process";
+import { promisify } from "util";
+import * as path from "path";
+
+const execAsync = promisify(exec);
 
 export interface RenderJobOptions {
   scriptId: string;
@@ -65,13 +70,93 @@ export class RenderJobService {
 
     logger.info("Render job started", { jobId });
 
-    // TODO: Implement actual rendering logic
-    // This would:
-    // 1. Load script, slides, and audio assets
-    // 2. Generate Remotion code if not already generated
-    // 3. Execute Remotion render command
-    // 4. Save output video and thumbnail
-    // 5. Update job status to "done" or "failed"
+    // Execute rendering in background
+    this.executeRender(job).catch((error) => {
+      logger.error("Render execution failed", { jobId, error: error.message });
+      this.failRenderJob(jobId, error.message);
+    });
+  }
+
+  /**
+   * Execute the actual rendering process
+   */
+  private async executeRender(job: RenderJob): Promise<void> {
+    try {
+      logger.info("Executing render", { jobId: job.id });
+
+      // Define output paths
+      const outputDir = path.join(
+        process.env.STORAGE_BASE_DIR || "./data",
+        "output"
+      );
+      const videoPath = path.join(outputDir, `${job.scriptId}.mp4`);
+      const thumbPath = path.join(outputDir, `${job.scriptId}-thumb.png`);
+
+      // Check if Remotion is available
+      const remotionCheck = await this.checkRemotionAvailable();
+      if (!remotionCheck) {
+        throw new Error(
+          "Remotion is not installed. Run: npm install -g @remotion/cli"
+        );
+      }
+
+      // Construct Remotion render command
+      // Assumes a Remotion project exists in ./remotion directory
+      const remotionProjectPath = path.join(process.cwd(), "remotion");
+      const command = `npx remotion render ${job.remotionEntry} ${videoPath} --props='{"scriptId":"${job.scriptId}"}'`;
+
+      logger.info("Running Remotion command", { command });
+
+      const { stdout, stderr } = await execAsync(command, {
+        cwd: remotionProjectPath,
+        timeout: 600000, // 10 minutes timeout
+      });
+
+      if (stderr) {
+        logger.warn("Remotion stderr", { stderr });
+      }
+
+      logger.info("Remotion render complete", { stdout });
+
+      // Generate thumbnail from video (using ffmpeg if available)
+      await this.generateThumbnail(videoPath, thumbPath);
+
+      // Mark job as complete
+      await this.completeRenderJob(job.id, { videoPath, thumbPath });
+    } catch (error: any) {
+      throw new Error(`Render execution failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Check if Remotion is available
+   */
+  private async checkRemotionAvailable(): Promise<boolean> {
+    try {
+      await execAsync("npx remotion --version");
+      return true;
+    } catch (error) {
+      logger.warn("Remotion not available");
+      return false;
+    }
+  }
+
+  /**
+   * Generate thumbnail from video
+   */
+  private async generateThumbnail(
+    videoPath: string,
+    thumbPath: string
+  ): Promise<void> {
+    try {
+      // Use ffmpeg to extract frame at 1 second
+      const command = `ffmpeg -i "${videoPath}" -ss 00:00:01 -vframes 1 "${thumbPath}" -y`;
+      await execAsync(command);
+      logger.info("Thumbnail generated", { thumbPath });
+    } catch (error: any) {
+      logger.warn("Thumbnail generation failed", { error: error.message });
+      // Don't fail the job if thumbnail generation fails
+    }
   }
 
   /**

@@ -1,0 +1,71 @@
+{
+  "$schema": "../config/audio-catalog-schema.json",
+  "version": "1.0.0",
+  "bgm": [
+    {
+      "id": "bgm-01",
+      "name": "Gentle Piano",
+      "path": "./assets/audio/bgm/gentle-piano.mp3",
+      "duration": 180,
+      "category": "calm",
+      "license": "CC0",
+      "tags": ["piano", "calm", "background"]
+    },
+    {
+      "id": "bgm-02",
+      "name": "Upbeat Corporate",
+      "path": "./assets/audio/bgm/upbeat-corporate.mp3",
+      "duration": 120,
+      "category": "energetic",
+      "license": "CC-BY",
+      "tags": ["corporate", "upbeat", "motivational"]
+    },
+    {
+      "id": "bgm-03",
+      "name": "Tech Ambient",
+      "path": "./assets/audio/bgm/tech-ambient.mp3",
+      "duration": 200,
+      "category": "tech",
+      "license": "CC0",
+      "tags": ["tech", "ambient", "modern"]
+    }
+  ],
+  "sfx": [
+    {
+      "id": "sfx-01",
+      "name": "Success Chime",
+      "path": "./assets/audio/sfx/success-chime.wav",
+      "duration": 1.5,
+      "category": "notification",
+      "license": "CC0",
+      "tags": ["success", "notification", "positive"]
+    },
+    {
+      "id": "sfx-02",
+      "name": "Transition Whoosh",
+      "path": "./assets/audio/sfx/transition-whoosh.wav",
+      "duration": 0.8,
+      "category": "transition",
+      "license": "CC0",
+      "tags": ["transition", "whoosh", "movement"]
+    },
+    {
+      "id": "sfx-03",
+      "name": "Click Sound",
+      "path": "./assets/audio/sfx/click.wav",
+      "duration": 0.3,
+      "category": "ui",
+      "license": "CC0",
+      "tags": ["click", "ui", "interaction"]
+    },
+    {
+      "id": "sfx-04",
+      "name": "Error Beep",
+      "path": "./assets/audio/sfx/error-beep.wav",
+      "duration": 0.5,
+      "category": "notification",
+      "license": "CC0",
+      "tags": ["error", "warning", "notification"]
+    }
+  ]
+}

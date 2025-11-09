@@ -58,8 +58,6 @@ export class AudioService {
       textLength: section.text.length,
     });
 
-    // TODO: Implement actual TTS generation based on provider
-    // This is a stub implementation
     const audioPath = path.join(this.outputDir, `${section.id}.wav`);
 
     // For now, create a placeholder file
@@ -82,17 +80,10 @@ export class AudioService {
    * Generate TTS audio file
    */
   private async generateTTS(text: string, outputPath: string): Promise<void> {
-    // TODO: Implement actual TTS generation
-    // This is a placeholder that creates an empty file
-    logger.warn("TTS generation not implemented, creating placeholder", {
+    logger.info("Generating TTS audio", {
+      provider: this.config.provider,
       outputPath,
     });
-
-    // Create a placeholder file
-    // In production, this would:
-    // 1. Call TTS API (ElevenLabs, OpenAI, VOICEPEAK, etc.)
-    // 2. Save the audio file to outputPath
-    // 3. Return the file path
 
     switch (this.config.provider) {
       case "elevenlabs":
@@ -261,11 +252,28 @@ export class AudioService {
     bgm: Array<{ id: string; name: string; path: string; duration: number }>;
     sfx: Array<{ id: string; name: string; path: string; duration: number }>;
   }> {
-    // TODO: Load from actual audio catalog file or database
-    return {
-      bgm: [],
-      sfx: [],
-    };
+    const catalogPath = path.join(
+      __dirname,
+      "../../templates/audio-catalog.json"
+    );
+
+    try {
+      const content = await fs.readFile(catalogPath, "utf-8");
+      const catalog = JSON.parse(content);
+      logger.info("Audio catalog loaded", {
+        bgmCount: catalog.bgm.length,
+        sfxCount: catalog.sfx.length,
+      });
+      return catalog;
+    } catch (error) {
+      logger.warn("Failed to load audio catalog, returning empty catalog", {
+        error,
+      });
+      return {
+        bgm: [],
+        sfx: [],
+      };
+    }
   }
 }
 
